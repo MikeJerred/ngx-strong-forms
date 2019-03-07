@@ -1,0 +1,33 @@
+{
+  "name": "ngx-strong-forms",
+  "version": "0.1.0",
+  "description": "Strongly typed reactive forms for Angular.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "main": "./src",
+  "keywords": [
+    "angular",
+    "forms",
+    "ng",
+    "ngx"
+  ],
+  "author": "Mike Jerred",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/MikeJerred/ngx-strong-forms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MikeJerred/ngx-strong-forms/issues"
+  },
+  "homepage": "https://github.com/MikeJerred/ngx-strong-forms#readme",
+  "peerDependencies": {
+    "@angular/core": ">=7.0.0",
+    "@angular/forms": ">=7.0.0",
+    "rxjs": ">=6.0.0"
+  },
+  "devDependencies": {
+    "tslint": "^5.13.1"
+  }
+}
