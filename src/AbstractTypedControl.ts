@@ -2,8 +2,8 @@ import { AbstractControl, AsyncValidatorFn, ValidationErrors, ValidatorFn } from
 import { Observable } from 'rxjs';
 
 import { TypedFormArray } from './TypedFormArray';
+import { TypedFormDictionary } from './TypedFormDictionary';
 import { TypedFormGroup } from './TypedFormGroup';
-import { TypedFormRecord } from './TypedFormRecord';
 
 export const VALID = 'VALID';
 export const INVALID = 'INVALID';
@@ -24,7 +24,11 @@ function _find(control: AbstractTypedControl, path: Array<string | number> | str
       return v.at(name as number) || null;
     }
 
-    if (v instanceof TypedFormGroup || v instanceof TypedFormRecord) {
+    if (v instanceof TypedFormDictionary) {
+      return v.controls.has(name as string) ? v.controls.get(name as string) : null;
+    }
+
+    if (v instanceof TypedFormGroup) {
       return v.controls.hasOwnProperty(name as string) ? v.controls[name] : null;
     }
 
@@ -35,7 +39,7 @@ function _find(control: AbstractTypedControl, path: Array<string | number> | str
 export type FormHooks = 'change' | 'blur' | 'submit';
 
 export abstract class AbstractTypedControl {
-  private _parent: TypedFormArray<any> | TypedFormGroup<any> | TypedFormRecord<any> | null = null;
+  private _parent: TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null = null;
 
   constructor(public _ctrl: AbstractControl) {}
 
@@ -44,7 +48,7 @@ export abstract class AbstractTypedControl {
   get validator(): ValidatorFn | null { return this._ctrl.validator; }
   get asyncValidator(): AsyncValidatorFn | null { return this._ctrl.asyncValidator; }
   get value(): any { return this._ctrl.value; }
-  get parent(): TypedFormArray<any> | TypedFormGroup<any> | TypedFormRecord<any> | null { return this._parent; }
+  get parent(): TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null { return this._parent; }
   get status(): string { return this._ctrl.status; }
   get valid(): boolean { return this.status === VALID; }
   get invalid(): boolean { return this.status === INVALID; }
@@ -72,7 +76,7 @@ export abstract class AbstractTypedControl {
   disable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.disable(opts); }
   enable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.enable(opts); }
 
-  setParent(parent: TypedFormArray<any> | TypedFormGroup<any> | TypedFormRecord<any> | null): void {
+  setParent(parent: TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null): void {
     this._parent = parent;
     this._ctrl.setParent(parent ? parent._ctrl as any : null);
   }

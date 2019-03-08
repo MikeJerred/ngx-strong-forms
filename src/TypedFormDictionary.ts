@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { NotUnion, ValueType, fromEntries } from './utilities';
 import { AbstractTypedControl } from './AbstractTypedControl';
 
-export class TypedFormRecord<T extends AbstractTypedControl> extends AbstractTypedControl {
+export class TypedFormDictionary<T extends AbstractTypedControl> extends AbstractTypedControl {
   private _controls: Record<string, T>;
 
   constructor(
