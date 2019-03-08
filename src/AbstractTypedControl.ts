@@ -92,8 +92,8 @@ export abstract class AbstractTypedControl {
     return _find(this, path, '.');
   }
 
-  getError(errorCode: string, path?: Array<string | number> | string): any { return this._ctrl.getError(errorCode, path); }
-  hasError(errorCode: string, path?: Array<string | number> | string): boolean { return this._ctrl.hasError(errorCode, path); }
+  getError(errorCode: string, path?: string[]): any { return this._ctrl.getError(errorCode, path); }
+  hasError(errorCode: string, path?: string[]): boolean { return this._ctrl.hasError(errorCode, path); }
 
   get root(): AbstractTypedControl {
     let x: AbstractTypedControl = this;

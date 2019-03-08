@@ -3,8 +3,15 @@
   "version": "0.1.0",
   "description": "Strongly typed reactive forms for Angular.",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "files": [
+    "src/",
+    "LICENSE",
+    "README.md",
+    "tsconfig.json"
+  ],
   "main": "./src",
   "keywords": [
     "angular",
@@ -22,12 +29,16 @@
     "url": "https://github.com/MikeJerred/ngx-strong-forms/issues"
   },
   "homepage": "https://github.com/MikeJerred/ngx-strong-forms#readme",
+  "dependencies": {
+    "@angular/core": "~7.0.0",
+    "@angular/forms": "~7.0.0",
+    "rxjs": "~6.0.0"
+  },
   "peerDependencies": {
-    "@angular/core": ">=7.0.0",
-    "@angular/forms": ">=7.0.0",
-    "rxjs": ">=6.0.0"
+    "@angular/forms": ">= 7.0.0"
   },
   "devDependencies": {
-    "tslint": "^5.13.1"
+    "tslint": "^5.13.1",
+    "typescript": "^3.3.0"
   }
 }
