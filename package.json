@@ -9,7 +9,7 @@
     "ng",
     "ngx"
   ],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "requiredAngularVersion": ">=7.0.0",
   "author": "Mike Jerred",
   "license": "MIT",
