@@ -1,44 +1,43 @@
 {
   "name": "ngx-strong-forms",
-  "version": "0.1.0",
   "description": "Strongly typed reactive forms for Angular.",
-  "scripts": {
-    "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "files": [
-    "src/",
-    "LICENSE",
-    "README.md",
-    "tsconfig.json"
-  ],
-  "main": "./src",
   "keywords": [
     "angular",
+    "angular2",
+    "angular7",
     "forms",
     "ng",
     "ngx"
   ],
+  "version": "0.1.0",
+  "requiredAngularVersion": ">=7.0.0",
   "author": "Mike Jerred",
   "license": "MIT",
+  "homepage": "https://github.com/MikeJerred/ngx-strong-forms",
+  "bugs": "https://github.com/MikeJerred/ngx-strong-forms/issues",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/MikeJerred/ngx-strong-forms.git"
+    "url": "git://github.com/MikeJerred/ngx-strong-forms.git"
   },
-  "bugs": {
-    "url": "https://github.com/MikeJerred/ngx-strong-forms/issues"
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "homepage": "https://github.com/MikeJerred/ngx-strong-forms#readme",
-  "dependencies": {
-    "@angular/core": "~7.0.0",
-    "@angular/forms": "~7.0.0",
-    "rxjs": "~6.0.0"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {},
+  "devDependencies": {
+    "@angular/common": "^7.2.9",
+    "@angular/core": "^7.2.9",
+    "@angular/forms": "^7.2.9",
+    "rxjs": "^6.4.0",
+    "tslint": "^5.13.1",
+    "typescript": "~3.2.0"
   },
   "peerDependencies": {
-    "@angular/forms": ">= 7.0.0"
-  },
-  "devDependencies": {
-    "tslint": "^5.13.1",
-    "typescript": "^3.3.0"
+    "@angular/common": "^7.2.9",
+    "@angular/core": "^7.2.9",
+    "@angular/forms": "^7.2.9",
+    "rxjs": "^6.4.0"
   }
 }

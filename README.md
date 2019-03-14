@@ -9,7 +9,21 @@ npm install ngx-strong-forms --save
 ```
 
 ## Usage
+This library provides 4 different types of form control.
 
+### TypedFormArray<T>
+This uses the Angular `FormArray` under the hood. It represents an array of items with type `T`, items can be added and removed but they must all be of type `T`.
+
+### TypedFormControl<T>
+This uses the Angular `FormControl` under the hood. It represents a single item of type `T`.
+
+### TypedFormDictionary<T>
+This uses the Angular `FormGroup` under the hood. It represents a dictionary of items of type `T` with a `string` key, items can be added and removed but they must all be of type `T`.
+
+### TypedFormGroup<T>
+This uses the Angular `FormGroup` under the hood. It represents a group of other form controls, once it is created items cannot be added or removed.
+
+## Examples
 ```typescript
 import { TypedFormControl, TypedFormGroup, TypedFormDictionary } from 'ngx-strong-forms';
 
