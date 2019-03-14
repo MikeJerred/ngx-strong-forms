@@ -3,9 +3,10 @@
   "description": "Strongly typed reactive forms for Angular.",
   "keywords": [
     "angular",
-    "angular2",
-    "angular7",
     "forms",
+    "reactive forms",
+    "types",
+    "strongly typed",
     "ng",
     "ngx"
   ],
