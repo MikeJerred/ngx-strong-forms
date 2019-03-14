@@ -12,7 +12,7 @@ function fromEntries<T, K extends number | string | symbol>(pairs: Iterable<[K, 
 export type ValueType<T> =
   T extends TypedFormArray<infer U> ? U[]
   : T extends TypedFormControl<infer U> ? U
-  : T extends TypedFormDictionary<infer U> ? Map<string, U>
+  : T extends TypedFormDictionary<infer U> ? Record<string, U>
   : T extends TypedFormGroup<infer U> ? { [P in keyof U]: ValueType<U[P]> }
   : T extends {} ? { [P in keyof T]: ValueType<T[P]> }
   : never;
