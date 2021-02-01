@@ -45,7 +45,7 @@ const form = new TypedFormGroup({
 
 form.controls.name.value // type is string
 
-form.controls.details.weight.valueChanges // type is Observable<number>
+form.controls.details.controls.weight.valueChanges // type is Observable<number>
 
 form.value // type is:
 // {
