@@ -5,16 +5,19 @@ import {
 } from '@angular/forms';
 import { Observable } from 'rxjs';
 
+import { TypedAsyncValidatorFn, TypedValidatorFn } from './directives/validators';
+import { composeAsyncValidators, composeValidators } from './validators';
+
 function fromEntries<T, K extends number | string | symbol>(pairs: Iterable<[K, T]> | ArrayLike<[K, T]>): Record<K ,T> {
   return Object.assign({}, ...Array.from(pairs, ([k, v]) => ({ [k]: v })));
 }
 
 export type ValueType<T> =
-  T extends TypedFormArray<infer U> ? U[]
-  : T extends TypedFormControl<infer U> ? U
-  : T extends TypedFormDictionary<infer U> ? Record<string, U>
-  : T extends TypedFormGroup<infer U> ? { [P in keyof U]: ValueType<U[P]> }
-  : T extends {} ? { [P in keyof T]: ValueType<T[P]> }
+  T extends TypedFormArray<infer U> ? ValueType<U>[]
+  : T extends TypedFormControl<infer V> ? V | null
+  : T extends TypedFormDictionary<infer W> ? { [key: string]: ValueType<W> }
+  : T extends TypedFormGroup<infer X> ? { [K in keyof X]: ValueType<X[K]> }
+  : T extends {} ? { [K in keyof T]: ValueType<T[K]> }
   : never;
 
 export type NotUnion<T> =
@@ -33,89 +36,213 @@ export const DISABLED = 'DISABLED';
 function _find(control: AbstractTypedControl, path: Array<string | number> | string, delimiter: string) {
   if (path == null) return null;
 
-  if (!(path instanceof Array)) {
-    path = path.split('.');
+  if (!Array.isArray(path)) {
+    path = path.split(delimiter);
   }
+  if (Array.isArray(path) && path.length === 0) return null;
 
-  if (path.length === 0) return null;
-
-  return path.reduce((v: AbstractTypedControl, name) => {
-    if (v instanceof TypedFormArray) {
-      return v.at(name as number) || null;
+  // Not using Array.reduce here due to a Chrome 80 bug
+  // https://bugs.chromium.org/p/chromium/issues/detail?id=1049982
+  let controlToFind: AbstractTypedControl | null = control;
+  path.forEach((name: string | number) => {
+    if (controlToFind instanceof TypedFormArray) {
+      controlToFind = controlToFind.at(name as number) || null;
+    } else if (controlToFind instanceof TypedFormDictionary) {
+      controlToFind = controlToFind.controls.has(name as string) ? controlToFind.controls.get(name as string) : null;
+    } else if (controlToFind instanceof TypedFormGroup) {
+      controlToFind = controlToFind.controls.hasOwnProperty(name as string) ? controlToFind.controls[name] : null;
+    } else {
+      controlToFind = null;
     }
-
-    if (v instanceof TypedFormDictionary) {
-      return v.controls.has(name as string) ? v.controls.get(name as string) : null;
-    }
-
-    if (v instanceof TypedFormGroup) {
-      return v.controls.hasOwnProperty(name as string) ? v.controls[name] : null;
-    }
-
-    return null;
-  }, control);
+  });
+  return controlToFind;
 }
 
-export type FormHooks = 'change' | 'blur' | 'submit';
+/**
+ * Gets validators from either an options object or given validators.
+ */
+function pickValidators<T extends AbstractTypedControl>(validatorOrOpts?: TypedValidatorFn<T>|
+  TypedValidatorFn<T>[]|TypedAbstractControlOptions<T>|null
+): TypedValidatorFn<T>|TypedValidatorFn<T>[]|null {
+  return (isOptionsObj(validatorOrOpts) ? validatorOrOpts.validators : validatorOrOpts) || null;
+}
+
+/**
+ * Creates validator function by combining provided validators.
+ */
+function coerceToValidator<T extends AbstractTypedControl>(
+  validator: TypedValidatorFn<T>|TypedValidatorFn<T>[]|null
+): TypedValidatorFn<T>|null {
+  return Array.isArray(validator) ? composeValidators(validator) : validator || null;
+}
+
+/**
+ * Gets async validators from either an options object or given validators.
+ */
+function pickAsyncValidators<T extends AbstractTypedControl>(
+  asyncValidator?: TypedAsyncValidatorFn<T>|TypedAsyncValidatorFn<T>[]|null,
+  validatorOrOpts?: TypedValidatorFn<T>|TypedValidatorFn<T>[]|TypedAbstractControlOptions<T>|null
+): TypedAsyncValidatorFn<T>|TypedAsyncValidatorFn<T>[]|null {
+  return (isOptionsObj(validatorOrOpts) ? validatorOrOpts.asyncValidators : asyncValidator) || null;
+}
+
+/**
+ * Creates async validator function by combining provided async validators.
+ */
+function coerceToAsyncValidator<T extends AbstractTypedControl>(
+  asyncValidator?: TypedAsyncValidatorFn<T>|TypedAsyncValidatorFn<T>[]|null
+): TypedAsyncValidatorFn<T>|null {
+  return Array.isArray(asyncValidator) ? composeAsyncValidators(asyncValidator) : asyncValidator || null;
+}
+
+export declare interface TypedAbstractControlOptions<T extends AbstractTypedControl> {
+  /**
+   * @description
+   * The list of validators applied to a control.
+   */
+  validators?: TypedValidatorFn<T> | TypedValidatorFn<T>[] | null;
+  /**
+   * @description
+   * The list of async validators applied to control.
+   */
+  asyncValidators?: TypedAsyncValidatorFn<T> | TypedAsyncValidatorFn<T>[] | null;
+  /**
+   * @description
+   * The event name for control to update upon.
+   */
+  updateOn?: 'change' | 'blur' | 'submit';
+}
+
+function isOptionsObj<T extends AbstractTypedControl>(
+  validatorOrOpts?: TypedValidatorFn<T>|TypedValidatorFn<T>[]|TypedAbstractControlOptions<T>|null
+): validatorOrOpts is TypedAbstractControlOptions<T> {
+  return validatorOrOpts != null && !Array.isArray(validatorOrOpts) && typeof validatorOrOpts === 'object';
+}
+
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(control: T, validatorOrOpts: TypedValidatorFn<T>): ValidatorFn;
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(control: T, validatorOrOpts: TypedValidatorFn<T> | null): ValidatorFn | null;
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(control: T, validatorOrOpts: TypedValidatorFn<T>[]): ValidatorFn[];
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(
+  control: T,
+  validatorOrOpts: TypedValidatorFn<T> | TypedValidatorFn<T>[]
+): ValidatorFn | ValidatorFn[];
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(
+  control: T,
+  validatorOrOpts: TypedValidatorFn<T> | TypedValidatorFn<T>[] | null
+): ValidatorFn | ValidatorFn[] | null;
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(
+  control: T,
+  validatorOrOpts: TypedAbstractControlOptions<T>
+): AbstractControlOptions;
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(
+  control: T,
+  validatorOrOpts?: TypedValidatorFn<T> | TypedValidatorFn<T>[] | TypedAbstractControlOptions<T> | null
+): ValidatorFn | ValidatorFn[] | AbstractControlOptions | null;
+function toNgValidatorOrOpts<T extends AbstractTypedControl>(
+  control: T,
+  validatorOrOpts?: TypedValidatorFn<T> | TypedValidatorFn<T>[] | TypedAbstractControlOptions<T> | null
+): ValidatorFn | ValidatorFn[] | AbstractControlOptions | null {
+  if (!validatorOrOpts) return null;
+
+  if (isOptionsObj(validatorOrOpts)) {
+    const result: AbstractControlOptions = {};
+    if (validatorOrOpts.asyncValidators) result.asyncValidators = toNgAsyncValidator(control, validatorOrOpts.asyncValidators);
+    if (validatorOrOpts.validators) result.validators = toNgValidatorOrOpts(control, validatorOrOpts.validators);
+    if (validatorOrOpts.updateOn) result.updateOn = validatorOrOpts.updateOn;
+    return result;
+  }
+
+  if (Array.isArray(validatorOrOpts)) {
+    return validatorOrOpts.map(validator => toNgValidatorOrOpts(control, validator));
+  }
+
+  // tslint:disable-next-line: only-arrow-functions
+  return function(ngControl: AbstractControl) {
+    return validatorOrOpts(control);
+  };
+}
+
+function toNgAsyncValidator<T extends AbstractTypedControl>(control: T, asyncValidatorFn: TypedAsyncValidatorFn<T>): AsyncValidatorFn;
+function toNgAsyncValidator<T extends AbstractTypedControl>(
+  control: T,
+  asyncValidatorFn: TypedAsyncValidatorFn<T> | null
+): AsyncValidatorFn | null;
+function toNgAsyncValidator<T extends AbstractTypedControl>(control: T, asyncValidatorFn: TypedAsyncValidatorFn<T>[]): AsyncValidatorFn[];
+function toNgAsyncValidator<T extends AbstractTypedControl>(
+  control: T,
+  asyncValidatorFn: TypedAsyncValidatorFn<T> | TypedAsyncValidatorFn<T>[]
+): AsyncValidatorFn | AsyncValidatorFn[];
+function toNgAsyncValidator<T extends AbstractTypedControl>(
+  control: T,
+  asyncValidatorFn: TypedAsyncValidatorFn<T> | TypedAsyncValidatorFn<T>[] | null
+): AsyncValidatorFn | AsyncValidatorFn[] | null;
+function toNgAsyncValidator<T extends AbstractTypedControl>(
+  control: T,
+  asyncValidator?: TypedAsyncValidatorFn<T> | TypedAsyncValidatorFn<T>[] | null
+): AsyncValidatorFn | AsyncValidatorFn[] | null;
+function toNgAsyncValidator<T extends AbstractTypedControl>(
+  control: T,
+  asyncValidator?: TypedAsyncValidatorFn<T> | TypedAsyncValidatorFn<T>[] | null
+): AsyncValidatorFn | AsyncValidatorFn[] | null {
+  if (!asyncValidator) return null;
+  if (Array.isArray(asyncValidator)) return asyncValidator.map(v => toNgAsyncValidator(control, v));
+
+  // tslint:disable-next-line: only-arrow-functions
+  return function(ngControl: AbstractControl) {
+    return asyncValidator(control);
+  };
+}
 
 export abstract class AbstractTypedControl {
   private _parent: TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null = null;
 
-  constructor(public _ctrl: AbstractControl) {}
-
   abstract get ng(): AbstractControl;
 
-  get validator(): ValidatorFn | null { return this._ctrl.validator; }
-  get asyncValidator(): AsyncValidatorFn | null { return this._ctrl.asyncValidator; }
-  get value(): any { return this._ctrl.value; }
-  get parent(): TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null { return this._parent; }
-  get status(): string { return this._ctrl.status; }
-  get valid(): boolean { return this.status === VALID; }
-  get invalid(): boolean { return this.status === INVALID; }
-  get pending(): boolean { return this.status == PENDING; }
-  get disabled(): boolean { return this.status === DISABLED; }
-  get enabled(): boolean { return this.status !== DISABLED; }
-  get errors(): ValidationErrors | null { return this._ctrl.errors; }
-  get pristine(): boolean { return this._ctrl.pristine; }
-  get dirty(): boolean { return !this.pristine; }
-  get touched(): boolean { return this._ctrl.touched; }
-  get untouched(): boolean { return !this.touched; }
-  get valueChanges(): Observable<any> { return this._ctrl.valueChanges; }
-  get statusChanges(): Observable<any> { return this._ctrl.statusChanges; }
-  get updateOn(): FormHooks { return this._ctrl.updateOn; }
-  setValidators(newValidator: ValidatorFn | ValidatorFn[] | null): void { this._ctrl.setValidators(newValidator); }
-  setAsyncValidators(newValidator: AsyncValidatorFn | AsyncValidatorFn[] | null): void { this._ctrl.setAsyncValidators(newValidator); }
-  clearValidators(): void { this._ctrl.clearValidators(); }
-  clearAsyncValidators(): void { this._ctrl.clearAsyncValidators(); }
-  markAsTouched(opts: { onlySelf?: boolean } = {}): void { this._ctrl.markAsTouched(opts); }
-  // markAllAsTouched(): void { this._ctrl.markAllAsTouched(); }
-  markAsUntouched(opts: { onlySelf?: boolean } = {}): void { this._ctrl.markAsUntouched(opts); }
-  markAsDirty(opts: { onlySelf?: boolean } = {}): void { this._ctrl.markAsDirty(opts); }
-  markAsPristine(opts: { onlySelf?: boolean } = {}): void { this._ctrl.markAsPristine(opts); }
-  markAsPending(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.markAsPending(opts); }
-  disable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.disable(opts); }
-  enable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.enable(opts); }
+  get value() { return this.ng.value; }
+  get parent() { return this._parent; }
+  get status() { return this.ng.status; }
+  get valid() { return this.ng.valid; }
+  get invalid() { return this.ng.invalid; }
+  get pending() { return this.ng.pending; }
+  get disabled() { return this.ng.disabled; }
+  get enabled() { return this.ng.enabled; }
+  get errors() { return this.ng.errors; }
+  get pristine() { return this.ng.pristine; }
+  get dirty() { return this.ng.dirty; }
+  get touched() { return this.ng.touched; }
+  get untouched() { return this.ng.untouched; }
+  get valueChanges() { return this.ng.valueChanges; }
+  get statusChanges() { return this.ng.statusChanges; }
+  get updateOn() { return this.ng.updateOn; }
+  markAsTouched(opts: { onlySelf?: boolean } = {}) { return this.ng.markAsTouched(opts); }
+  markAllAsTouched() { return this.ng.markAllAsTouched(); }
+  markAsUntouched(opts: { onlySelf?: boolean } = {}) { return this.ng.markAsUntouched(opts); }
+  markAsDirty(opts: { onlySelf?: boolean } = {}) { return this.ng.markAsDirty(opts); }
+  markAsPristine(opts: { onlySelf?: boolean } = {}) { return this.ng.markAsPristine(opts); }
+  markAsPending(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}) { return this.ng.markAsPending(opts); }
+  disable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}) { return this.ng.disable(opts); }
+  enable(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}) { return this.ng.enable(opts); }
 
-  setParent(parent: TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any> | null): void {
+  setParent(parent: TypedFormArray<any> | TypedFormDictionary<any> | TypedFormGroup<any>): void {
     this._parent = parent;
-    this._ctrl.setParent(parent ? parent._ctrl as any : null);
+    this.ng.setParent(parent.ng);
   }
 
   abstract setValue(value: any, options?: Object): void;
   abstract patchValue(value: any, options?: Object): void;
   abstract reset(value?: any, options?: Object): void;
 
-  updateValueAndValidity(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this._ctrl.updateValueAndValidity(opts); }
-  setErrors(errors: ValidationErrors | null, opts: { emitEvent?: boolean } = {}): void { this._ctrl.setErrors(errors, opts); }
+  updateValueAndValidity(opts: { onlySelf?: boolean, emitEvent?: boolean } = {}) { return this.ng.updateValueAndValidity(opts); }
+  setErrors(errors: ValidationErrors | null, opts: { emitEvent?: boolean } = {}) { return this.ng.setErrors(errors, opts); }
 
-  get(path: Array<string | number> | string): AbstractTypedControl | null {
+  get(path: Array<string | number> | string) {
     return _find(this, path, '.');
   }
 
-  getError(errorCode: string, path?: string[]): any { return this._ctrl.getError(errorCode, path); }
-  hasError(errorCode: string, path?: string[]): boolean { return this._ctrl.hasError(errorCode, path); }
+  getError(errorCode: string, path?: string[]) { return this.ng.getError(errorCode, path); }
+  hasError(errorCode: string, path?: string[]) { return this.ng.hasError(errorCode, path); }
 
-  get root(): AbstractTypedControl {
+  get root() {
     let x: AbstractTypedControl = this;
 
     while (x._parent) x = x._parent;
@@ -125,26 +252,107 @@ export abstract class AbstractTypedControl {
 }
 
 export class TypedFormArray<T extends AbstractTypedControl> extends AbstractTypedControl {
-  public _controls: T[];
+  private _ng: FormArray;
+  private _controls: T[];
+
+  /**
+   * Contains the result of merging synchronous validators into a single validator function
+   * (combined using `Validators.compose`).
+   *
+   * @internal
+   */
+  private _composedValidatorFn: TypedValidatorFn<TypedFormArray<T>>|null;
+
+  /**
+   * Contains the result of merging asynchronous validators into a single validator function
+   * (combined using `Validators.composeAsync`).
+   *
+   * @internal
+   */
+  private _composedAsyncValidatorFn: TypedAsyncValidatorFn<TypedFormArray<T>>|null;
+
+  /**
+   * Synchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setValidators` function
+   *  - while calling the setter on the `validator` field (e.g. `control.validator = validatorFn`)
+   *
+   * @internal
+   */
+  private _rawValidators: TypedValidatorFn<TypedFormArray<T>>|TypedValidatorFn<TypedFormArray<T>>[]|null;
+
+  /**
+   * Asynchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setAsyncValidators` function
+   *  - while calling the setter on the `asyncValidator` field (e.g. `control.asyncValidator =
+   * asyncValidatorFn`)
+   *
+   * @internal
+   */
+  private _rawAsyncValidators: TypedAsyncValidatorFn<TypedFormArray<T>>|TypedAsyncValidatorFn<TypedFormArray<T>>[]|null;
 
   constructor(
     controls: T[],
-    validatorOrOpts?: ValidatorFn | ValidatorFn[] | AbstractControlOptions | null,
-    asyncValidator?: AsyncValidatorFn | AsyncValidatorFn[] | null
+    validatorOrOpts?: TypedValidatorFn<TypedFormArray<T>> |
+      TypedValidatorFn<TypedFormArray<T>>[] |
+      TypedAbstractControlOptions<TypedFormArray<T>> |
+      null,
+    asyncValidator?: TypedAsyncValidatorFn<TypedFormArray<T>> | TypedAsyncValidatorFn<TypedFormArray<T>>[] | null
   ) {
-    const ctrl = new FormArray(controls.map(ctrl => ctrl._ctrl), validatorOrOpts, asyncValidator);
-    super(ctrl);
+    super();
+    this._rawValidators = pickValidators(validatorOrOpts);
+    this._rawAsyncValidators = pickAsyncValidators(asyncValidator, validatorOrOpts);
+    this._composedValidatorFn = coerceToValidator(this._rawValidators);
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(this._rawAsyncValidators);
+    this._ng = new FormArray(
+      controls.map(ctrl => ctrl.ng),
+      toNgValidatorOrOpts(this, validatorOrOpts),
+      toNgAsyncValidator(this, asyncValidator)
+    );
     this._controls = controls;
   }
 
-  get controls(): T[] {
-    return this._controls;
-  }
+  get controls(): T[] { return this._controls; }
 
-  get ng(): FormArray { return this._ctrl as FormArray; }
+  get ng(): FormArray { return this._ng; }
 
   get value(): ValueType<T>[] { return this.ng.value; }
   get valueChanges(): Observable<ValueType<T>[]> { return this.ng.valueChanges; }
+
+  get validator() { return this._composedValidatorFn; }
+  set validator(validatorFn: TypedValidatorFn<TypedFormArray<T>>|null) {
+    this._rawValidators = this._composedValidatorFn = validatorFn;
+  }
+  get asyncValidator() { return this._composedAsyncValidatorFn; }
+  set asyncValidator(asyncValidatorFn: TypedAsyncValidatorFn<TypedFormArray<T>>|null) {
+    this._rawAsyncValidators = this._composedAsyncValidatorFn = asyncValidatorFn;
+  }
+
+  setValidators(newValidator: TypedValidatorFn<TypedFormArray<T>> | TypedValidatorFn<TypedFormArray<T>>[] | null) {
+    this._rawValidators = newValidator;
+    this._composedValidatorFn = coerceToValidator(newValidator);
+    this.ng.setValidators(toNgValidatorOrOpts(this, newValidator));
+  }
+
+  setAsyncValidators(
+    newAsyncValidator: TypedAsyncValidatorFn<TypedFormArray<T>> |
+      TypedAsyncValidatorFn<TypedFormArray<T>>[] |
+      null
+  ) {
+    this._rawAsyncValidators = newAsyncValidator;
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(newAsyncValidator);
+    this.ng.setAsyncValidators(toNgAsyncValidator(this, newAsyncValidator));
+  }
+
+  clearValidators() {
+    this.validator = null;
+    this.ng.clearValidators();
+  }
+  clearAsyncValidators() {
+    this.asyncValidator = null;
+    this.ng.clearAsyncValidators();
+  }
 
   at(index: number): T { return this.controls[index]; }
 
@@ -152,37 +360,30 @@ export class TypedFormArray<T extends AbstractTypedControl> extends AbstractType
     this._controls.push(control);
     control.setParent(this);
 
-    this.ng.push(control._ctrl);
+    this.ng.push(control.ng);
   }
 
   insert(index: number, control: T): void {
     this._controls.splice(index, 0, control);
     control.setParent(this);
 
-    this.ng.insert(index, control._ctrl);
+    this.ng.insert(index, control.ng);
   }
 
   removeAt(index: number): void {
-    const deletedControls = this._controls.splice(index, 1);
-    deletedControls.forEach(deletedControl => {
-      deletedControl.setParent(null);
-    });
-
+    this._controls.splice(index, 1);
     this.ng.removeAt(index);
   }
 
   setControl(index: number, control: T): void {
-    const deletedControls = this._controls.splice(index, 1);
-    deletedControls.forEach(deletedControl => {
-      deletedControl.setParent(null);
-    });
+    this._controls.splice(index, 1);
 
     if (control) {
       this._controls.splice(index, 0, control);
       control.setParent(this);
     }
 
-    this.ng.setControl(index, control._ctrl);
+    this.ng.setControl(index, control.ng);
   }
 
   get length(): number { return this.controls.length; }
@@ -193,20 +394,99 @@ export class TypedFormArray<T extends AbstractTypedControl> extends AbstractType
 }
 
 export class TypedFormControl<T> extends AbstractTypedControl {
+  private _ng: FormControl;
+
+  /**
+   * Contains the result of merging synchronous validators into a single validator function
+   * (combined using `Validators.compose`).
+   *
+   * @internal
+   */
+  private _composedValidatorFn: TypedValidatorFn<TypedFormControl<T>>|null;
+
+  /**
+   * Contains the result of merging asynchronous validators into a single validator function
+   * (combined using `Validators.composeAsync`).
+   *
+   * @internal
+   */
+  private _composedAsyncValidatorFn: TypedAsyncValidatorFn<TypedFormControl<T>>|null;
+
+  /**
+   * Synchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setValidators` function
+   *  - while calling the setter on the `validator` field (e.g. `control.validator = validatorFn`)
+   *
+   * @internal
+   */
+  private _rawValidators: TypedValidatorFn<TypedFormControl<T>>|TypedValidatorFn<TypedFormControl<T>>[]|null;
+
+  /**
+   * Asynchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setAsyncValidators` function
+   *  - while calling the setter on the `asyncValidator` field (e.g. `control.asyncValidator =
+   * asyncValidatorFn`)
+   *
+   * @internal
+   */
+  private _rawAsyncValidators: TypedAsyncValidatorFn<TypedFormControl<T>>|TypedAsyncValidatorFn<TypedFormControl<T>>[]|null;
+
   constructor(
     formState: T | null = null,
-    validatorOrOpts?: ValidatorFn | ValidatorFn[] | AbstractControlOptions | null,
-    asyncValidator?: AsyncValidatorFn | AsyncValidatorFn[] | null
+    validatorOrOpts?: TypedValidatorFn<TypedFormControl<T>> |
+      TypedValidatorFn<TypedFormControl<T>>[] |
+      TypedAbstractControlOptions<TypedFormControl<T>> |
+      null,
+    asyncValidator?: TypedAsyncValidatorFn<TypedFormControl<T>> | TypedAsyncValidatorFn<TypedFormControl<T>>[] | null
   ) {
-    const ctrl = new FormControl(formState, validatorOrOpts, asyncValidator);
-    super(ctrl);
-    this._ctrl = ctrl;
+    super();
+    this._rawValidators = pickValidators(validatorOrOpts);
+    this._rawAsyncValidators = pickAsyncValidators(asyncValidator, validatorOrOpts);
+    this._composedValidatorFn = coerceToValidator(this._rawValidators);
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(this._rawAsyncValidators);
+    this._ng = new FormControl(formState, toNgValidatorOrOpts(this, validatorOrOpts), toNgAsyncValidator(this, asyncValidator));
   }
 
-  get ng(): FormControl { return this._ctrl as FormControl; }
+  get ng(): FormControl { return this._ng; }
 
   get value(): T { return this.ng.value; }
   get valueChanges(): Observable<T> { return this.ng.valueChanges; }
+
+  get validator() { return this._composedValidatorFn; }
+  set validator(validatorFn: TypedValidatorFn<TypedFormControl<T>>|null) {
+    this._rawValidators = this._composedValidatorFn = validatorFn;
+  }
+  get asyncValidator() { return this._composedAsyncValidatorFn; }
+  set asyncValidator(asyncValidatorFn: TypedAsyncValidatorFn<TypedFormControl<T>>|null) {
+    this._rawAsyncValidators = this._composedAsyncValidatorFn = asyncValidatorFn;
+  }
+
+  setValidators(newValidator: TypedValidatorFn<TypedFormControl<T>> | TypedValidatorFn<TypedFormControl<T>>[] | null) {
+    this._rawValidators = newValidator;
+    this._composedValidatorFn = coerceToValidator(newValidator);
+    this.ng.setValidators(toNgValidatorOrOpts(this, newValidator));
+  }
+
+  setAsyncValidators(
+    newAsyncValidator: TypedAsyncValidatorFn<TypedFormControl<T>> |
+      TypedAsyncValidatorFn<TypedFormControl<T>>[] |
+      null
+  ) {
+    this._rawAsyncValidators = newAsyncValidator;
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(newAsyncValidator);
+    this.ng.setAsyncValidators(toNgAsyncValidator(this, newAsyncValidator));
+  }
+
+  clearValidators() {
+    this.validator = null;
+    this.ng.clearValidators();
+  }
+  clearAsyncValidators() {
+    this.asyncValidator = null;
+    this.ng.clearAsyncValidators();
+  }
 
   setValue(
     value: T,
@@ -238,19 +518,64 @@ export class TypedFormControl<T> extends AbstractTypedControl {
 }
 
 export class TypedFormDictionary<T extends AbstractTypedControl> extends AbstractTypedControl {
+  private _ng: FormGroup;
   private _controls: Record<string, T>;
+
+  /**
+   * Contains the result of merging synchronous validators into a single validator function
+   * (combined using `Validators.compose`).
+   *
+   * @internal
+   */
+  private _composedValidatorFn: TypedValidatorFn<TypedFormDictionary<T>>|null;
+
+  /**
+   * Contains the result of merging asynchronous validators into a single validator function
+   * (combined using `Validators.composeAsync`).
+   *
+   * @internal
+   */
+  private _composedAsyncValidatorFn: TypedAsyncValidatorFn<TypedFormDictionary<T>>|null;
+
+  /**
+   * Synchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setValidators` function
+   *  - while calling the setter on the `validator` field (e.g. `control.validator = validatorFn`)
+   *
+   * @internal
+   */
+  private _rawValidators: TypedValidatorFn<TypedFormDictionary<T>>|TypedValidatorFn<TypedFormDictionary<T>>[]|null;
+
+  /**
+   * Asynchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setAsyncValidators` function
+   *  - while calling the setter on the `asyncValidator` field (e.g. `control.asyncValidator =
+   * asyncValidatorFn`)
+   *
+   * @internal
+   */
+  private _rawAsyncValidators: TypedAsyncValidatorFn<TypedFormDictionary<T>>|TypedAsyncValidatorFn<TypedFormDictionary<T>>[]|null;
 
   constructor(
     controls: Record<string, NotUnion<T>>,
-    validatorOrOpts?: ValidatorFn | ValidatorFn[] | AbstractControlOptions | null,
-    asyncValidator?: AsyncValidatorFn | AsyncValidatorFn[] | null
+    validatorOrOpts?: TypedValidatorFn<TypedFormDictionary<T>> |
+      TypedValidatorFn<TypedFormDictionary<T>>[] |
+      TypedAbstractControlOptions<TypedFormDictionary<T>> |
+      null,
+    asyncValidator?: TypedAsyncValidatorFn<TypedFormDictionary<T>> | TypedAsyncValidatorFn<TypedFormDictionary<T>>[] | null
   ) {
-    const ctrl = new FormGroup(
-      fromEntries(Object.entries(controls).map(([key, ctrl]) => [key, ctrl._ctrl] as [string, AbstractControl])),
-      validatorOrOpts,
-      asyncValidator
+    super();
+    this._rawValidators = pickValidators(validatorOrOpts);
+    this._rawAsyncValidators = pickAsyncValidators(asyncValidator, validatorOrOpts);
+    this._composedValidatorFn = coerceToValidator(this._rawValidators);
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(this._rawAsyncValidators);
+    this._ng = new FormGroup(
+      fromEntries(Object.entries(controls).map(([key, ctrl]) => [key, ctrl.ng] as [string, AbstractControl])),
+      toNgValidatorOrOpts(this, validatorOrOpts),
+      toNgAsyncValidator(this, asyncValidator)
     );
-    super(ctrl);
     this._controls = controls;
   }
 
@@ -258,10 +583,44 @@ export class TypedFormDictionary<T extends AbstractTypedControl> extends Abstrac
     return this._controls;
   }
 
-  get ng(): FormGroup { return this._ctrl as FormGroup; }
+  get ng(): FormGroup { return this._ng; }
 
   get value(): Record<string, ValueType<T>> { return this.ng.value; }
   get valueChanges(): Observable<Record<string, ValueType<T>>> { return this.ng.valueChanges; }
+
+  get validator() { return this._composedValidatorFn; }
+  set validator(validatorFn: TypedValidatorFn<TypedFormDictionary<T>>|null) {
+    this._rawValidators = this._composedValidatorFn = validatorFn;
+  }
+  get asyncValidator() { return this._composedAsyncValidatorFn; }
+  set asyncValidator(asyncValidatorFn: TypedAsyncValidatorFn<TypedFormDictionary<T>>|null) {
+    this._rawAsyncValidators = this._composedAsyncValidatorFn = asyncValidatorFn;
+  }
+
+  setValidators(newValidator: TypedValidatorFn<TypedFormDictionary<T>> | TypedValidatorFn<TypedFormDictionary<T>>[] | null) {
+    this._rawValidators = newValidator;
+    this._composedValidatorFn = coerceToValidator(newValidator);
+    this.ng.setValidators(toNgValidatorOrOpts(this, newValidator));
+  }
+
+  setAsyncValidators(
+    newAsyncValidator: TypedAsyncValidatorFn<TypedFormDictionary<T>> |
+      TypedAsyncValidatorFn<TypedFormDictionary<T>>[] |
+      null
+  ) {
+    this._rawAsyncValidators = newAsyncValidator;
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(newAsyncValidator);
+    this.ng.setAsyncValidators(toNgAsyncValidator(this, newAsyncValidator));
+  }
+
+  clearValidators() {
+    this.validator = null;
+    this.ng.clearValidators();
+  }
+  clearAsyncValidators() {
+    this.asyncValidator = null;
+    this.ng.clearAsyncValidators();
+  }
 
   registerControl(name: string, control: T): T {
     if (this._controls[name]) {
@@ -271,7 +630,7 @@ export class TypedFormDictionary<T extends AbstractTypedControl> extends Abstrac
     this._controls[name] = control;
     control.setParent(this);
 
-    this.ng.registerControl(name, control._ctrl);
+    this.ng.registerControl(name, control.ng);
     return control;
   }
 
@@ -281,7 +640,7 @@ export class TypedFormDictionary<T extends AbstractTypedControl> extends Abstrac
       control.setParent(this);
     }
 
-    this.ng.addControl(name, control._ctrl);
+    this.ng.addControl(name, control.ng);
   }
 
   removeControl(name: string): void {
@@ -296,7 +655,7 @@ export class TypedFormDictionary<T extends AbstractTypedControl> extends Abstrac
       control.setParent(this);
     }
 
-    this.ng.setControl(name, control._ctrl);
+    this.ng.setControl(name, control.ng);
   }
 
   contains(controlName: string): boolean { return this.ng.contains(controlName); }
@@ -306,20 +665,65 @@ export class TypedFormDictionary<T extends AbstractTypedControl> extends Abstrac
   getRawValue(): Record<string, ValueType<T>> { return this.ng.getRawValue(); }
 }
 
-export class TypedFormGroup<T extends { [P in keyof T]: T[P] extends AbstractTypedControl ? T[P] : never }> extends AbstractTypedControl {
+export class TypedFormGroup<T extends { [K in keyof T]: AbstractTypedControl }> extends AbstractTypedControl {
+  private _ng: FormGroup;
   private _controls: T;
+
+  /**
+   * Contains the result of merging synchronous validators into a single validator function
+   * (combined using `Validators.compose`).
+   *
+   * @internal
+   */
+  private _composedValidatorFn: TypedValidatorFn<TypedFormGroup<T>>|null;
+
+  /**
+   * Contains the result of merging asynchronous validators into a single validator function
+   * (combined using `Validators.composeAsync`).
+   *
+   * @internal
+   */
+  private _composedAsyncValidatorFn: TypedAsyncValidatorFn<TypedFormGroup<T>>|null;
+
+  /**
+   * Synchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setValidators` function
+   *  - while calling the setter on the `validator` field (e.g. `control.validator = validatorFn`)
+   *
+   * @internal
+   */
+  private _rawValidators: TypedValidatorFn<TypedFormGroup<T>>|TypedValidatorFn<TypedFormGroup<T>>[]|null;
+
+  /**
+   * Asynchronous validators as they were provided:
+   *  - in `AbstractControl` constructor
+   *  - as an argument while calling `setAsyncValidators` function
+   *  - while calling the setter on the `asyncValidator` field (e.g. `control.asyncValidator =
+   * asyncValidatorFn`)
+   *
+   * @internal
+   */
+  private _rawAsyncValidators: TypedAsyncValidatorFn<TypedFormGroup<T>>|TypedAsyncValidatorFn<TypedFormGroup<T>>[]|null;
 
   constructor(
     controls: T,
-    validatorOrOpts?: ValidatorFn | ValidatorFn[] | AbstractControlOptions | null,
-    asyncValidator?: AsyncValidatorFn | AsyncValidatorFn[] | null
+    validatorOrOpts?: TypedValidatorFn<TypedFormGroup<T>> |
+      TypedValidatorFn<TypedFormGroup<T>>[] |
+      TypedAbstractControlOptions<TypedFormGroup<T>> |
+      null,
+    asyncValidator?: TypedAsyncValidatorFn<TypedFormGroup<T>> | TypedAsyncValidatorFn<TypedFormGroup<T>>[] | null
   ) {
-    const ctrl = new FormGroup(
-      fromEntries(Object.entries(controls).map(([key, ctrl]) => [key, (ctrl as AbstractTypedControl)._ctrl] as [string, AbstractControl])),
-      validatorOrOpts,
-      asyncValidator
+    super();
+    this._rawValidators = pickValidators(validatorOrOpts);
+    this._rawAsyncValidators = pickAsyncValidators(asyncValidator, validatorOrOpts);
+    this._composedValidatorFn = coerceToValidator(this._rawValidators);
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(this._rawAsyncValidators);
+    this._ng = new FormGroup(
+      fromEntries(Object.entries(controls).map(([key, ctrl]) => [key, (ctrl as AbstractTypedControl).ng] as [string, AbstractControl])),
+      toNgValidatorOrOpts(this, validatorOrOpts),
+      toNgAsyncValidator(this, asyncValidator)
     );
-    super(ctrl);
     this._controls = controls;
   }
 
@@ -327,10 +731,44 @@ export class TypedFormGroup<T extends { [P in keyof T]: T[P] extends AbstractTyp
     return this._controls;
   }
 
-  get ng(): FormGroup { return this._ctrl as FormGroup; }
+  get ng(): FormGroup { return this._ng as FormGroup; }
 
   get value(): ValueType<T> { return this.ng.value; }
   get valueChanges(): Observable<ValueType<T>> { return this.ng.valueChanges; }
+
+  get validator() { return this._composedValidatorFn; }
+  set validator(validatorFn: TypedValidatorFn<TypedFormGroup<T>>|null) {
+    this._rawValidators = this._composedValidatorFn = validatorFn;
+  }
+  get asyncValidator() { return this._composedAsyncValidatorFn; }
+  set asyncValidator(asyncValidatorFn: TypedAsyncValidatorFn<TypedFormGroup<T>>|null) {
+    this._rawAsyncValidators = this._composedAsyncValidatorFn = asyncValidatorFn;
+  }
+
+  setValidators(newValidator: TypedValidatorFn<TypedFormGroup<T>> | TypedValidatorFn<TypedFormGroup<T>>[] | null) {
+    this._rawValidators = newValidator;
+    this._composedValidatorFn = coerceToValidator(newValidator);
+    this.ng.setValidators(toNgValidatorOrOpts(this, newValidator));
+  }
+
+  setAsyncValidators(
+    newAsyncValidator: TypedAsyncValidatorFn<TypedFormGroup<T>> |
+      TypedAsyncValidatorFn<TypedFormGroup<T>>[] |
+      null
+  ) {
+    this._rawAsyncValidators = newAsyncValidator;
+    this._composedAsyncValidatorFn = coerceToAsyncValidator(newAsyncValidator);
+    this.ng.setAsyncValidators(toNgAsyncValidator(this, newAsyncValidator));
+  }
+
+  clearValidators() {
+    this.validator = null;
+    this.ng.clearValidators();
+  }
+  clearAsyncValidators() {
+    this.asyncValidator = null;
+    this.ng.clearAsyncValidators();
+  }
 
   setControl<K extends keyof T, U extends T[K] & AbstractTypedControl>(name: K, control: U): void {
     delete (this._controls[name]);
@@ -339,12 +777,18 @@ export class TypedFormGroup<T extends { [P in keyof T]: T[P] extends AbstractTyp
       control.setParent(this);
     }
 
-    this.ng.setControl(name as string, control._ctrl);
+    this.ng.setControl(name as string, control.ng);
   }
 
   contains(controlName: string): boolean { return this.ng.contains(controlName); }
-  setValue(value: ValueType<T>, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this.ng.setValue(value, options); }
-  patchValue(value: Partial<ValueType<T>>, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this.ng.patchValue(value, options); }
-  reset(value: Partial<ValueType<T>> | {} = {}, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void { this.ng.reset(value, options); }
+  setValue(value: ValueType<T>, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void {
+    this.ng.setValue(value as any, options);
+  }
+  patchValue(value: Partial<ValueType<T>>, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void {
+    this.ng.patchValue(value, options);
+  }
+  reset(value: Partial<ValueType<T>> | {} = {}, options: { onlySelf?: boolean, emitEvent?: boolean } = {}): void {
+    this.ng.reset(value, options);
+  }
   getRawValue(): ValueType<T> { return this.ng.getRawValue(); }
 }
