@@ -29,3 +29,33 @@ const d = new TypedFormDictionary({
 
 
 d.value['paul'];
+
+
+
+const form = new TypedFormGroup({
+  name: new TypedFormControl<string>(),
+  details: new TypedFormGroup({
+    size: new TypedFormControl<'small' | 'medium' | 'large'>(),
+    weight: new TypedFormControl<number>()
+  }),
+  locations: new TypedFormDictionary({
+    usa: new TypedFormGroup({
+      count: new TypedFormControl<number>()
+    }),
+    japan: new TypedFormGroup({
+      count: new TypedFormControl<number>()
+    })
+  })
+});
+
+
+
+form.controls.name.value // type is string
+
+form.controls.details.controls.weight.valueChanges // type is Observable<number>
+
+form.value;
+
+form.controls.locations.addControl('brazil', new TypedFormGroup({ count: new TypedFormControl(0) }));
+form.controls.locations.addControl('brazil', new TypedFormControl(0));
+
