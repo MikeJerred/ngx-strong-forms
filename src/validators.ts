@@ -1,4 +1,4 @@
-import { ValidationErrors } from '@angular/forms';
+import { Validators, ValidationErrors } from '@angular/forms';
 import { from, Observable } from 'rxjs';
 import { Subscribable } from 'rxjs';
 import { forkJoin } from 'rxjs';
@@ -6,49 +6,6 @@ import { map } from 'rxjs/operators'
 
 import { TypedAsyncValidator, TypedAsyncValidatorFn, TypedValidator, TypedValidatorFn } from './directives/validators';
 import { AbstractTypedControl } from './models';
-
-function isEmptyInputValue(value: any): boolean {
-  // we don't check for string here so it also works with arrays
-  return value == null || value.length === 0;
-}
-
-function hasValidLength(value: any): boolean {
-  // non-strict comparison is intentional, to check for both `null` and `undefined` values
-  return value != null && typeof value.length === 'number';
-}
-
-/**
- * A regular expression that matches valid e-mail addresses.
- *
- * At a high level, this regexp matches e-mail addresses of the format `local-part@tld`, where:
- * - `local-part` consists of one or more of the allowed characters (alphanumeric and some
- *   punctuation symbols).
- * - `local-part` cannot begin or end with a period (`.`).
- * - `local-part` cannot be longer than 64 characters.
- * - `tld` consists of one or more `labels` separated by periods (`.`). For example `localhost` or
- *   `foo.com`.
- * - A `label` consists of one or more of the allowed characters (alphanumeric, dashes (`-`) and
- *   periods (`.`)).
- * - A `label` cannot begin or end with a dash (`-`) or a period (`.`).
- * - A `label` cannot be longer than 63 characters.
- * - The whole address cannot be longer than 254 characters.
- *
- * ## Implementation background
- *
- * This regexp was ported over from AngularJS (see there for git history):
- * https://github.com/angular/angular.js/blob/c133ef836/src/ng/directive/input.js#L27
- * It is based on the
- * [WHATWG version](https://html.spec.whatwg.org/multipage/input.html#valid-e-mail-address) with
- * some enhancements to incorporate more RFC rules (such as rules related to domain names and the
- * lengths of different parts of the address). The main differences from the WHATWG version are:
- *   - Disallow `local-part` to begin or end with a period (`.`).
- *   - Disallow `local-part` length to exceed 64 characters.
- *   - Disallow total address length to exceed 254 characters.
- *
- * See [this commit](https://github.com/angular/angular.js/commit/f3f5cf72e) for more details.
- */
-const EMAIL_REGEXP =
-    /^(?=.{1,254}$)(?=.{1,64}@)[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 export class TypedValidators {
   /**
@@ -73,15 +30,7 @@ export class TypedValidators {
    *
    */
   static min<T extends AbstractTypedControl>(min: number): TypedValidatorFn<T> {
-    return (control: T): ValidationErrors|null => {
-      if (isEmptyInputValue(control.value) || isEmptyInputValue(min)) {
-        return null;  // don't validate empty values to allow optional controls
-      }
-      const value = parseFloat(control.value);
-      // Controls with NaN values after parsing should be treated as not having a
-      // minimum, per the HTML forms spec: https://www.w3.org/TR/html5/forms.html#attr-input-min
-      return !isNaN(value) && value < min ? {'min': {'min': min, 'actual': control.value}} : null;
-    };
+    return (control: T) => Validators.min(min)(control.ng);
   }
 
   /**
@@ -106,15 +55,7 @@ export class TypedValidators {
    *
    */
   static max<T extends AbstractTypedControl>(max: number): TypedValidatorFn<T> {
-    return (control: T): ValidationErrors|null => {
-      if (isEmptyInputValue(control.value) || isEmptyInputValue(max)) {
-        return null;  // don't validate empty values to allow optional controls
-      }
-      const value = parseFloat(control.value);
-      // Controls with NaN values after parsing should be treated as not having a
-      // maximum, per the HTML forms spec: https://www.w3.org/TR/html5/forms.html#attr-input-max
-      return !isNaN(value) && value > max ? {'max': {'max': max, 'actual': control.value}} : null;
-    };
+    return (control: T) => Validators.max(max)(control.ng);
   }
 
   /**
@@ -137,8 +78,8 @@ export class TypedValidators {
    * @see `updateValueAndValidity()`
    *
    */
-  static requiredTypedValidatorFn<T extends AbstractTypedControl>(control: T): ValidationErrors|null {
-    return isEmptyInputValue(control.value) ? {'required': true} : null;
+  static required<T extends AbstractTypedControl>(control: T): ValidationErrors|null {
+    return Validators.required(control.ng);
   }
 
   /**
@@ -163,7 +104,7 @@ export class TypedValidators {
    *
    */
   static requiredTrue<T extends AbstractTypedControl>(control: T): ValidationErrors|null {
-    return control.value === true ? null : {'required': true};
+    return Validators.requiredTrue(control.ng);
   }
 
   /**
@@ -203,10 +144,7 @@ export class TypedValidators {
    *
    */
   static email<T extends AbstractTypedControl>(control: T): ValidationErrors|null {
-    if (isEmptyInputValue(control.value)) {
-      return null;  // don't validate empty values to allow optional controls
-    }
-    return EMAIL_REGEXP.test(control.value) ? null : {'email': true};
+    return Validators.email(control.ng);
   }
 
   /**
@@ -240,17 +178,7 @@ export class TypedValidators {
    *
    */
   static minLength<T extends AbstractTypedControl>(minLength: number): TypedValidatorFn<T> {
-    return (control: T): ValidationErrors|null => {
-      if (isEmptyInputValue(control.value) || !hasValidLength(control.value)) {
-        // don't validate empty values to allow optional controls
-        // don't validate values without `length` property
-        return null;
-      }
-
-      return control.value.length < minLength ?
-          {'minlength': {'requiredLength': minLength, 'actualLength': control.value.length}} :
-          null;
-    };
+    return (control: T) => Validators.minLength(minLength)(control.ng);
   }
 
   /**
@@ -281,11 +209,7 @@ export class TypedValidators {
    *
    */
   static maxLength<T extends AbstractTypedControl>(maxLength: number): TypedValidatorFn<T> {
-    return (control: T): ValidationErrors|null => {
-      return hasValidLength(control.value) && control.value.length > maxLength ?
-          {'maxlength': {'requiredLength': maxLength, 'actualLength': control.value.length}} :
-          null;
-    };
+    return (control: T) => Validators.maxLength(maxLength)(control.ng);
   }
 
   /**
@@ -338,31 +262,7 @@ export class TypedValidators {
    *
    */
   static pattern<T extends AbstractTypedControl>(pattern: string|RegExp): TypedValidatorFn<T> {
-    if (!pattern) return TypedValidators.nullValidator;
-    let regex: RegExp;
-    let regexStr: string;
-    if (typeof pattern === 'string') {
-      regexStr = '';
-
-      if (pattern.charAt(0) !== '^') regexStr += '^';
-
-      regexStr += pattern;
-
-      if (pattern.charAt(pattern.length - 1) !== '$') regexStr += '$';
-
-      regex = new RegExp(regexStr);
-    } else {
-      regexStr = pattern.toString();
-      regex = pattern;
-    }
-    return (control: T): ValidationErrors|null => {
-      if (isEmptyInputValue(control.value)) {
-        return null;  // don't validate empty values to allow optional controls
-      }
-      const value: string = control.value;
-      return regex.test(value) ? null :
-                                 {'pattern': {'requiredPattern': regexStr, 'actualValue': value}};
-    };
+    return (control: T) => Validators.pattern(pattern)(control.ng);
   }
 
   /**
@@ -373,7 +273,7 @@ export class TypedValidators {
    *
    */
   static nullValidator<T extends AbstractTypedControl>(control: T): ValidationErrors|null {
-    return null;
+    return Validators.nullValidator(control.ng);
   }
 
   /**
@@ -501,10 +401,6 @@ export function composeAsyncValidators<T extends AbstractTypedControl>(
   return validators != null ? TypedValidators.composeAsync(normalizeValidators<TypedAsyncValidatorFn<T>, T>(validators)) : null;
 }
 
-
-
-
-
 /**
  * Determine if the argument is shaped like a Promise
  */
@@ -530,5 +426,4 @@ export function isSubscribable(obj: any|Subscribable<any>): obj is Subscribable<
  * `subscribe()` method, and RxJS has mechanisms to wrap `Subscribable` objects
  * into `Observable` as needed.
  */
-export const isObservable =
-    isSubscribable as ((obj: any|Observable<any>) => obj is Observable<any>);
+export const isObservable = isSubscribable as ((obj: any|Observable<any>) => obj is Observable<any>);

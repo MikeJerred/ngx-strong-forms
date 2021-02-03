@@ -488,7 +488,7 @@ export class TypedFormControl<T> extends AbstractTypedControl {
   }
 
   setValue(
-    value: T,
+    value: T | null,
     options: {
       onlySelf?: boolean,
       emitEvent?: boolean,
@@ -500,7 +500,7 @@ export class TypedFormControl<T> extends AbstractTypedControl {
   }
 
   patchValue(
-    value: T,
+    value: T | null,
     options: {
       onlySelf?: boolean,
       emitEvent?: boolean,
