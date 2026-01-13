@@ -28,14 +28,14 @@
   "types": "./dist/index.d.ts",
   "dependencies": {},
   "devDependencies": {
-    "@angular/common": "^13.0.2",
+    "@angular/common": "^19.2.16",
     "@angular/core": "^13.0.2",
     "@angular/forms": "^13.0.2",
     "rxjs": "~6.6.0",
     "typescript": "~4.3.5"
   },
   "peerDependencies": {
-    "@angular/common": "^13.0.2",
+    "@angular/common": "^19.2.16",
     "@angular/core": "^13.0.2",
     "@angular/forms": "^13.0.2",
     "rxjs": "~6.6.0"
